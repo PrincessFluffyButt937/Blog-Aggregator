@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/PrincessFluffyButt937/Blog-Aggregator/internal/config"
+	_ "github.com/lib/pq"
 )
 
 func main() {
