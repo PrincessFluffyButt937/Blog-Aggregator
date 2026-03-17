@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -40,6 +43,22 @@ func (c *commands) run(s *state, cmd command) error {
 
 func (c *commands) register(name string, f func(*state, command) error) {
 	c.repo[name] = f
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
 }
 
 func handlerLogin(s *state, c command) error {
@@ -87,4 +106,53 @@ func handlerReset(s *state, c command) error {
 	}
 	fmt.Println("Users table reset was successul.")
 	return nil
+}
+
+func handlerUsers(s *state, c command) error {
+	user_entries, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		fmt.Printf("handlerUsers error: %s\n", err)
+		os.Exit(1)
+	}
+	current_user := s.con.Current_user_name
+	for _, user := range user_entries {
+		db_user := user.Name.String
+		if db_user == current_user {
+			fmt.Printf("* %s (current)\n", db_user)
+		} else {
+			fmt.Printf("* %s\n", db_user)
+		}
+	}
+	return nil
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		fmt.Printf("fetchFeed error - NewRequest..: %s\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("User-Agent", "gator")
+
+	cli := http.Client{}
+
+	res, err := cli.Do(req)
+	if err != nil {
+		fmt.Printf("fetchFeed error - request: %s\n", err)
+		os.Exit(1)
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		fmt.Printf("fetchFeed error - io.ReadAll: %s\n", err)
+		os.Exit(1)
+	}
+	var feed *RSSFeed
+
+	if err := xml.Unmarshal(body, &feed); err != nil {
+		fmt.Printf("fetchFeed error - unmarshal: %s\n", err)
+		os.Exit(1)
+	}
+	return feed, nil
 }

@@ -34,6 +34,7 @@ func main() {
 	coms.register("login", handlerLogin)
 	coms.register("register", handlerRegister)
 	coms.register("reset", handlerReset)
+	coms.register("users", handlerUsers)
 	if len(args) < 2 {
 		fmt.Println("Error, # of Args is less than 1")
 		os.Exit(1)
