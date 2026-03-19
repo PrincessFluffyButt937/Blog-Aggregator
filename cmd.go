@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -133,7 +134,6 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 		os.Exit(1)
 	}
 	req.Header.Set("User-Agent", "gator")
-
 	cli := http.Client{}
 
 	res, err := cli.Do(req)
@@ -142,17 +142,78 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 		os.Exit(1)
 	}
 	defer res.Body.Close()
-
-	body, err := io.ReadAll(req.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		fmt.Printf("fetchFeed error - io.ReadAll: %s\n", err)
 		os.Exit(1)
 	}
-	var feed *RSSFeed
+
+	var feed RSSFeed
 
 	if err := xml.Unmarshal(body, &feed); err != nil {
 		fmt.Printf("fetchFeed error - unmarshal: %s\n", err)
 		os.Exit(1)
 	}
-	return feed, nil
+	feed.Channel.Title = html.UnescapeString(feed.Channel.Title)
+	feed.Channel.Description = html.UnescapeString(feed.Channel.Description)
+	for i, item := range feed.Channel.Item {
+		feed.Channel.Item[i].Title = html.UnescapeString(item.Title)
+		feed.Channel.Item[i].Description = html.UnescapeString(item.Description)
+	}
+
+	return &feed, nil
+}
+
+func handlerAgg(s *state, c command) error {
+	agg, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		fmt.Printf("handlerAgg error: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(agg)
+	return nil
+}
+
+func handlerAddfeed(s *state, c command) error {
+	user, err := s.db.GetUser(context.Background(), sql.NullString{String: s.con.Current_user_name, Valid: true})
+	if err == sql.ErrNoRows {
+		fmt.Printf("handlerAddfeed error: User %s does not exist!\n", s.con.Current_user_name)
+		os.Exit(1)
+	}
+	if len(c.arg) < 2 {
+		fmt.Println("handlerAddfeed error: 2 args are required")
+		fmt.Println("please enter agrs in order: <feed_name> <feed_url>")
+		os.Exit(1)
+	}
+	now := time.Now()
+
+	feed_data := database.CreateFeedParams{
+		ID:        uuid.New(),
+		Name:      c.arg[0],
+		Url:       c.arg[1],
+		UserID:    user.ID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	s.db.CreateFeed(context.Background(), feed_data)
+	return nil
+}
+
+func handlerFeeds(s *state, c command) error {
+	rows, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		fmt.Printf("handlerFeeds error db_GetFeeds: %s\n", err)
+		os.Exit(1)
+	}
+	for _, row := range rows {
+		user, err := s.db.GetUserById(context.Background(), row.UserID)
+		if err != nil {
+			fmt.Printf("handlerFeeds error db_GetUserById: %s\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("|user_name: %s |feed_ID: %v | F_name: %s | F_url: %s| F_created: %v | F_updated: %v |\n",
+			user.Name.String, row.ID, row.Name, row.Url, row.CreatedAt, row.UpdatedAt)
+	}
+	return nil
 }
