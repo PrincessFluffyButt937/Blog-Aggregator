@@ -38,6 +38,8 @@ func main() {
 	coms.register("agg", handlerAgg)
 	coms.register("addfeed", handlerAddfeed)
 	coms.register("feeds", handlerFeeds)
+	coms.register("follow", handlerFollow)
+	coms.register("following", handlerFollowing)
 	if len(args) < 2 {
 		fmt.Println("Error, # of Args is less than 1")
 		os.Exit(1)

@@ -196,7 +196,19 @@ func handlerAddfeed(s *state, c command) error {
 		UpdatedAt: now,
 	}
 
-	s.db.CreateFeed(context.Background(), feed_data)
+	feed, err := s.db.CreateFeed(context.Background(), feed_data)
+	if err != nil {
+		fmt.Printf("handlerAddfeed error db_CreateFeed: %s\n", err)
+		os.Exit(1)
+	}
+	follow_data := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: feed.CreatedAt,
+		UpdatedAt: feed.UpdatedAt,
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	}
+	s.db.CreateFeedFollow(context.Background(), follow_data)
 	return nil
 }
 
@@ -214,6 +226,56 @@ func handlerFeeds(s *state, c command) error {
 		}
 		fmt.Printf("|user_name: %s |feed_ID: %v | F_name: %s | F_url: %s| F_created: %v | F_updated: %v |\n",
 			user.Name.String, row.ID, row.Name, row.Url, row.CreatedAt, row.UpdatedAt)
+	}
+	return nil
+}
+
+func handlerFollow(s *state, c command) error {
+	if len(c.arg) < 1 {
+		fmt.Println("handlerFollow error: 1 arg is required")
+		fmt.Println("please enter agr: <url>")
+		os.Exit(1)
+	}
+	feed_row, err := s.db.GetFeedByUrl(context.Background(), c.arg[0])
+	if err != nil {
+		fmt.Printf("handlerFollow error db_GetFeedByUrl: %s\n", err)
+		os.Exit(1)
+	}
+
+	user, err := s.db.GetUser(context.Background(), sql.NullString{String: s.con.Current_user_name, Valid: true})
+	if err != nil {
+		fmt.Printf("handlerFollow error db_GetUser: %s\n", err)
+		os.Exit(1)
+	}
+
+	now := time.Now()
+
+	feed := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		UserID:    user.ID,
+		FeedID:    feed_row.ID,
+	}
+	s.db.CreateFeedFollow(context.Background(), feed)
+	fmt.Printf("User %s is now following %s feed.\n", s.con.Current_user_name, feed_row.Name)
+	return nil
+}
+
+func handlerFollowing(s *state, c command) error {
+	user, err := s.db.GetUser(context.Background(), sql.NullString{String: s.con.Current_user_name, Valid: true})
+	if err != nil {
+		fmt.Printf("handlerFollowing error db_GetUser: %s\n", err)
+		os.Exit(1)
+	}
+	follows, err := s.db.GetFollows(context.Background(), user.ID)
+	if err != nil {
+		fmt.Printf("handlerFollowing error db_GetFollows: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("You are following these feeds:")
+	for _, follow := range follows {
+		fmt.Printf("* %s\n", follow.FeedName)
 	}
 	return nil
 }
