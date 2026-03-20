@@ -243,6 +243,26 @@ func handlerFollowing(s *state, c command, user database.User) error {
 	return nil
 }
 
+func handlerUnfollow(s *state, c command, user database.User) error {
+	if len(c.arg) < 1 {
+		return fmt.Errorf("handlerFollow error: 1 arg is required\nplease enter agr: <url>\n")
+	}
+	feed, err := s.db.GetFeedByUrl(context.Background(), c.arg[0])
+	if err != nil {
+		return fmt.Errorf("handlerUnfollow error db_GetFeedByUrl: %s\n", err)
+	}
+
+	follow := database.DelFollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	}
+
+	if err := s.db.DelFollow(context.Background(), follow); err != nil {
+		return fmt.Errorf("handlerUnfollow error db_DelFollow: %s\n", err)
+	}
+	return nil
+}
+
 func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
 	return func(s *state, cmd command) error {
 		user, err := s.db.GetUser(context.Background(), sql.NullString{String: s.con.Current_user_name, Valid: true})
