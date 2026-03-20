@@ -154,12 +154,18 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 }
 
 func handlerAgg(s *state, c command) error {
-	agg, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-	if err != nil {
-		return fmt.Errorf("handlerAgg error: %s\n", err)
+	if len(c.arg) < 1 {
+		return fmt.Errorf("handlerAgg error: 1 arg is required\nplease enter agr: <time>\nValid formats:\n 30s; 5m; 1h...\n")
 	}
-	fmt.Println(agg)
-	return nil
+	cycle_duration, err := time.ParseDuration(c.arg[0])
+	if err != nil {
+		return fmt.Errorf("handlerAgg error - invalid time format: %s\n", err)
+	}
+	fmt.Printf("Collecting feeds every %s\n", c.arg[0])
+	ticker := time.NewTicker(cycle_duration)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
+	}
 }
 
 func handlerAddfeed(s *state, c command, user database.User) error {
@@ -270,5 +276,31 @@ func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) 
 			return fmt.Errorf("middlewareLoggedIn error db_GetUser: %s\n", err)
 		}
 		return handler(s, cmd, user)
+	}
+}
+
+func scrapeFeeds(s *state) {
+	feed_to_update, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		fmt.Printf("scrapeFeeds error db_GetNextFeedToFetch: %s\n", err)
+	}
+	now := time.Now()
+	feed_to_mark := database.MarkFeedFetchedParams{
+		UpdatedAt:     now,
+		LastFetchedAt: sql.NullTime{Time: now, Valid: true},
+		ID:            feed_to_update.ID,
+	}
+	if err := s.db.MarkFeedFetched(context.Background(), feed_to_mark); err != nil {
+		fmt.Printf("scrapeFeeds error db_MarkFeedFetched: %s\n", err)
+	}
+	feed, err := fetchFeed(context.Background(), feed_to_update.Url)
+	if err != nil {
+		fmt.Printf("scrapeFeeds error fetchFeed: %s\n", err)
+	} else {
+		fmt.Println("----------------------------------------------------------------------------")
+		fmt.Printf("Feed title: %s\n", feed.Channel.Title)
+		for _, item := range feed.Channel.Item {
+			fmt.Printf("* %s\n", item.Title)
+		}
 	}
 }
