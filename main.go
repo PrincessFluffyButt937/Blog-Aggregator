@@ -36,10 +36,10 @@ func main() {
 	coms.register("reset", handlerReset)
 	coms.register("users", handlerUsers)
 	coms.register("agg", handlerAgg)
-	coms.register("addfeed", handlerAddfeed)
+	coms.register("addfeed", middlewareLoggedIn(handlerAddfeed))
 	coms.register("feeds", handlerFeeds)
-	coms.register("follow", handlerFollow)
-	coms.register("following", handlerFollowing)
+	coms.register("follow", middlewareLoggedIn(handlerFollow))
+	coms.register("following", middlewareLoggedIn(handlerFollowing))
 	if len(args) < 2 {
 		fmt.Println("Error, # of Args is less than 1")
 		os.Exit(1)
@@ -51,7 +51,12 @@ func main() {
 		name: args[1],
 		arg:  args[2:],
 	}
-	coms.run(&s, com)
+
+	if err := coms.run(&s, com); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	if err := config.Write_cfg(s.con); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
