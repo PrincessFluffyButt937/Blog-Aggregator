@@ -8,6 +8,8 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/PrincessFluffyButt937/Blog-Aggregator/internal/config"
@@ -297,10 +299,55 @@ func scrapeFeeds(s *state) {
 	if err != nil {
 		fmt.Printf("scrapeFeeds error fetchFeed: %s\n", err)
 	} else {
-		fmt.Println("----------------------------------------------------------------------------")
-		fmt.Printf("Feed title: %s\n", feed.Channel.Title)
 		for _, item := range feed.Channel.Item {
-			fmt.Printf("* %s\n", item.Title)
+			post_param := database.CreatePostParams{
+				ID:          uuid.New(),
+				CreatedAt:   now,
+				UpdatedAt:   now,
+				Title:       item.Title,
+				Url:         item.Link,
+				Description: item.Description,
+				FeedID:      feed_to_update.ID,
+			}
+			fmt.Println("-----------------")
+			fmt.Println(item.Description)
+			published, err := time.Parse(time.RFC1123Z, item.PubDate)
+			if err != nil {
+				fmt.Printf("unknown time format: %s error: %s\n", item.PubDate, err)
+				post_param.PublishedAt = sql.NullTime{Valid: false}
+			} else {
+				post_param.PublishedAt = sql.NullTime{Time: published, Valid: true}
+			}
+			if _, err := s.db.CreatePost(context.Background(), post_param); err != nil {
+				if !strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+					fmt.Printf("scrapeFeeds error db_CreatePost: %s\n", err)
+				}
+			}
 		}
 	}
+}
+
+func handlerBrowse(s *state, c command, user database.User) error {
+	limit := 2
+	if len(c.arg) >= 1 {
+		i, err := strconv.Atoi(c.arg[0])
+		if err == nil {
+			limit = i
+		}
+	}
+	params := database.GetPostsParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	}
+	posts, err := s.db.GetPosts(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("handlerBrowse error db_GetPosts: %s\n", err)
+	}
+	fmt.Println("Printing your posts...")
+	for _, post := range posts {
+		fmt.Println("--------------------------------------------------------------")
+		fmt.Printf("Post title: %s\n", post.Title)
+		fmt.Println(post.Description)
+	}
+	return nil
 }
